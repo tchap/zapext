@@ -20,7 +20,7 @@ type Core struct {
 	fields []zapcore.Field
 }
 
-func NewCore(encoder zapcore.Encoder, writer *syslog.Writer, enab zapcore.LevelEnabler) *Core {
+func NewCore(enab zapcore.LevelEnabler, encoder zapcore.Encoder, writer *syslog.Writer) *Core {
 	return &Core{
 		LevelEnabler: enab,
 		encoder:      encoder,

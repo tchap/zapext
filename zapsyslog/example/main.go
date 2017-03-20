@@ -35,7 +35,7 @@ func run() error {
 	// Initialize Zap.
 	encoder := zapcore.NewJSONEncoder(zap.NewDevelopmentEncoderConfig())
 
-	core := zapsyslog.NewCore(encoder, writer, zapcore.ErrorLevel)
+	core := zapsyslog.NewCore(zapcore.ErrorLevel, encoder, writer)
 
 	logger := zap.New(core, zap.Development(), zap.AddStacktrace(zapcore.ErrorLevel))
 
