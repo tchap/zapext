@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/getsentry/raven-go"
-	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -48,6 +47,7 @@ const (
 	PlatformKey   = "platform"
 	CulpritKey    = "culprit"
 	ServerNameKey = "server_name"
+	ErrorKey      = "error"
 )
 
 //
@@ -140,18 +140,8 @@ func (core *Core) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *zap
 }
 
 func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	// Assemble Sentry interface objects.
-	var interfaces []raven.Interface
-
-	if entry.Level >= zapcore.ErrorLevel {
-		ex := raven.NewException(errors.New(entry.Message),
-			raven.NewStacktrace(core.stSkip, core.stContext, core.stPackagePrefixes))
-
-		interfaces = append(interfaces, ex)
-	}
-
 	// Create a Raven packet.
-	packet := raven.NewPacket(entry.Message, interfaces...)
+	packet := raven.NewPacket(entry.Message)
 
 	// Process entry.
 	packet.Level = zapLevelToRavenSeverity[entry.Level]
@@ -160,6 +150,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 	// Process fields.
 	encoder := zapcore.NewMapObjectEncoder()
+	var err error
 
 	processField := func(field zapcore.Field) {
 		// Check for significant keys.
@@ -178,6 +169,13 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 		case ServerNameKey:
 			packet.ServerName = field.String
+
+		case ErrorKey:
+			if ex, ok := field.Interface.(error); ok {
+				err = ex
+			} else {
+				field.AddTo(encoder)
+			}
 
 		default:
 			// Add to the encoder in case this is not a significant key.
@@ -217,6 +215,11 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	}
 	if len(extra) != 0 {
 		packet.Extra = extra
+	}
+
+	// In case an error object is present, create an exception.
+	packet.Interfaces = []raven.Interface{
+		raven.NewException(err, raven.NewStacktrace(core.stSkip, core.stContext, core.stPackagePrefixes)),
 	}
 
 	// Capture the packet.
