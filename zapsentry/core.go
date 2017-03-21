@@ -161,16 +161,8 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// Process fields.
 	encoder := zapcore.NewMapObjectEncoder()
 
-	for _, field := range fields {
+	processField := func(field zapcore.Field) {
 		// Check for significant keys.
-
-		/*
-			TODO: We Could also try to set:
-
-			packet.Modules =
-			packet.Fingerprint =
-		*/
-
 		switch field.Key {
 		case EventIDKey:
 			packet.EventID = field.String
@@ -191,6 +183,17 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 			// Add to the encoder in case this is not a significant key.
 			field.AddTo(encoder)
 		}
+	}
+
+	// Process core fields first.
+	for _, field := range core.fields {
+		processField(field)
+	}
+
+	// Then process the fields passed directly.
+	// These can be then used to overwrite the core fields.
+	for _, field := range fields {
+		processField(field)
 	}
 
 	tags := make(map[string]string)
