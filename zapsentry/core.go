@@ -56,12 +56,6 @@ const (
 
 type Option func(*Core)
 
-func SetEnvironment(env Environment) Option {
-	return func(core *Core) {
-		core.env = env
-	}
-}
-
 func SetStackTraceSkip(skip int) Option {
 	return func(core *Core) {
 		core.stSkip = skip
@@ -80,7 +74,7 @@ func SetStackTracePackagePrefixes(prefixes []string) Option {
 	}
 }
 
-func SetWait(enab zapcore.LevelEnabler) Option {
+func SetWaitEnabler(enab zapcore.LevelEnabler) Option {
 	return func(core *Core) {
 		core.wait = enab
 	}
@@ -93,15 +87,13 @@ func SetWait(enab zapcore.LevelEnabler) Option {
 const (
 	DefaultEnvironment       = EnvProduction
 	DefaultStackTraceContext = 5
-	DefaultWait              = zapcore.PanicLevel
+	DefaultWaitEnabler       = zapcore.PanicLevel
 )
 
 type Core struct {
 	zapcore.LevelEnabler
 
 	client *raven.Client
-
-	env Environment
 
 	stSkip            int
 	stContext         int
@@ -116,28 +108,13 @@ func NewCore(enab zapcore.LevelEnabler, client *raven.Client, options ...Option)
 	core := &Core{
 		LevelEnabler: enab,
 		client:       client,
-		env:          DefaultEnvironment,
 		stContext:    DefaultStackTraceContext,
-		wait:         DefaultWait,
+		wait:         DefaultWaitEnabler,
 	}
 
 	for _, opt := range options {
 		opt(core)
 	}
-
-	switch core.env {
-	case EnvDevelopment:
-		if !core.Enabled(zapcore.DebugLevel) {
-			core.LevelEnabler = zapcore.DebugLevel
-		}
-
-	case EnvProduction:
-		if !core.Enabled(zapcore.ErrorLevel) {
-			core.LevelEnabler = zapcore.ErrorLevel
-		}
-	}
-
-	client.SetEnvironment(string(core.env))
 
 	return core
 }
