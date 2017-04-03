@@ -218,8 +218,12 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	}
 
 	// In case an error object is present, create an exception.
-	packet.Interfaces = []raven.Interface{
-		raven.NewException(err, raven.NewStacktrace(core.stSkip, core.stContext, core.stPackagePrefixes)),
+	// Capture the stack trace in any case.
+	stackTrace := raven.NewStacktrace(core.stSkip, core.stContext, core.stPackagePrefixes)
+	if err != nil {
+		packet.Interfaces = append(packet.Interfaces, raven.NewException(err, stackTrace))
+	} else {
+		packet.Interfaces = append(packet.Interfaces, stackTrace)
 	}
 
 	// Capture the packet.
