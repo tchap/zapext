@@ -2,6 +2,7 @@ package zapsentry
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/getsentry/raven-go"
@@ -40,14 +41,15 @@ const (
 const TagPrefix = "#"
 
 const (
-	EventIDKey    = "event_id"
-	ProjectKey    = "project"
-	TimestampKey  = "timestamp"
-	LoggerKey     = "logger"
-	PlatformKey   = "platform"
-	CulpritKey    = "culprit"
-	ServerNameKey = "server_name"
-	ErrorKey      = "error"
+	EventIDKey     = "event_id"
+	ProjectKey     = "project"
+	TimestampKey   = "timestamp"
+	LoggerKey      = "logger"
+	PlatformKey    = "platform"
+	CulpritKey     = "culprit"
+	ServerNameKey  = "server_name"
+	ErrorKey       = "error"
+	HTTPRequestKey = "http_request"
 )
 
 //
@@ -150,7 +152,12 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 	// Process fields.
 	encoder := zapcore.NewMapObjectEncoder()
-	var err error
+
+	// When set, relevant Sentry interfaces are added.
+	var (
+		err error
+		req *http.Request
+	)
 
 	processField := func(field zapcore.Field) {
 		// Check for significant keys.
@@ -173,6 +180,13 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		case ErrorKey:
 			if ex, ok := field.Interface.(error); ok {
 				err = ex
+			} else {
+				field.AddTo(encoder)
+			}
+
+		case HTTPRequestKey:
+			if r, ok := field.Interface.(*http.Request); ok {
+				req = r
 			} else {
 				field.AddTo(encoder)
 			}
@@ -224,6 +238,11 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		packet.Interfaces = append(packet.Interfaces, raven.NewException(err, stackTrace))
 	} else {
 		packet.Interfaces = append(packet.Interfaces, stackTrace)
+	}
+
+	// In case an HTTP request is present, add the HTTP interface.
+	if req != nil {
+		packet.Interfaces = append(packet.Interfaces, raven.NewHttp(req))
 	}
 
 	// Capture the packet.
