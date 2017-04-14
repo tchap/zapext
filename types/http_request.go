@@ -7,8 +7,8 @@ import (
 )
 
 // HTTPRequest implements zapcore.ObjectMarshaller.
-// It is supposed to be used to wrap *http.Request so that is can be passed to
-// Zap and marshalled properly:
+// It is supposed to be used to wrap *http.Request
+// so that it can be passed to Zap and marshalled properly:
 //
 //   zap.Object("http_request", types.HTTPRequest{req})
 type HTTPRequest struct {
