@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/tchap/zapext/types"
+
 	"github.com/getsentry/raven-go"
 	"go.uber.org/zap/zapcore"
 )
@@ -185,9 +187,14 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 			}
 
 		case HTTPRequestKey:
-			if r, ok := field.Interface.(*http.Request); ok {
+			switch r := field.Interface.(type) {
+			case *http.Request:
 				req = r
-			} else {
+			case types.HTTPRequest:
+				req = r.R
+			case *types.HTTPRequest:
+				req = r.R
+			default:
 				field.AddTo(encoder)
 			}
 
