@@ -10,7 +10,7 @@ import (
 // It is supposed to be used to wrap *http.Response
 // so that it can be passed to Zap and marshalled properly:
 //
-//   zap.Object("http_response", types.HTTPResponse{req})
+//   zap.Object("http_response", types.HTTPResponse{res})
 type HTTPResponse struct {
 	R *http.Response
 }
