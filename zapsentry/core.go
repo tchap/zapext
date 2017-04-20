@@ -8,6 +8,7 @@ import (
 	"github.com/tchap/zapext/types"
 
 	"github.com/getsentry/raven-go"
+	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -53,6 +54,8 @@ const (
 	ErrorKey       = "error"
 	HTTPRequestKey = "http_request"
 )
+
+const ActualStackTraceKey = "actual_stack_trace"
 
 //
 // Core options
@@ -215,6 +218,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		processField(field)
 	}
 
+	// Split fields into tags and extra.
 	tags := make(map[string]string)
 	extra := make(map[string]interface{})
 
@@ -231,18 +235,21 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		}
 	}
 
-	if len(tags) != 0 {
-		packet.AddTags(tags)
-	}
-	if len(extra) != 0 {
-		packet.Extra = extra
-	}
-
 	// In case an error object is present, create an exception.
 	// Capture the stack trace in any case.
 	stackTrace := raven.NewStacktrace(core.stSkip, core.stContext, core.stPackagePrefixes)
 	if err != nil {
 		packet.Interfaces = append(packet.Interfaces, raven.NewException(err, stackTrace))
+
+		// In case this is a stack tracer, record the actual error stack trace.
+		if stackTracer, ok := err.(StackTracer); ok {
+			frames := stackTracer.StackTrace()
+			record := make([][]string, 0, len(frames))
+			for _, frame := range frames {
+				record = append(record, strings.Split(fmt.Sprintf("%+v", frame), "\n"))
+			}
+			extra[ActualStackTraceKey] = record
+		}
 	} else {
 		packet.Interfaces = append(packet.Interfaces, stackTrace)
 	}
@@ -250,6 +257,14 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// In case an HTTP request is present, add the HTTP interface.
 	if req != nil {
 		packet.Interfaces = append(packet.Interfaces, raven.NewHttp(req))
+	}
+
+	// Add tags and extra into the packet.
+	if len(tags) != 0 {
+		packet.AddTags(tags)
+	}
+	if len(extra) != 0 {
+		packet.Extra = extra
 	}
 
 	// Capture the packet.
@@ -264,4 +279,8 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 func (core *Core) Sync() error {
 	core.client.Wait()
 	return nil
+}
+
+type StackTracer interface {
+	StackTrace() errors.StackTrace
 }
