@@ -55,7 +55,7 @@ const (
 	HTTPRequestKey = "http_request"
 )
 
-const ActualStackTraceKey = "actual_stack_trace"
+const ErrorStackTraceKey = "error_stack_trace"
 
 //
 // Core options
@@ -248,7 +248,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 			for _, frame := range frames {
 				record = append(record, strings.Split(fmt.Sprintf("%+v", frame), "\n"))
 			}
-			extra[ActualStackTraceKey] = record
+			extra[ErrorStackTraceKey] = record
 		}
 	} else {
 		packet.Interfaces = append(packet.Interfaces, stackTrace)
