@@ -27,17 +27,6 @@ var zapLevelToRavenSeverity = map[zapcore.Level]raven.Severity{
 }
 
 //
-// Environment
-//
-
-type Environment string
-
-const (
-	EnvDevelopment Environment = "development"
-	EnvProduction  Environment = "production"
-)
-
-//
 // Significant field keys
 //
 
@@ -92,7 +81,6 @@ func SetWaitEnabler(enab zapcore.LevelEnabler) Option {
 //
 
 const (
-	DefaultEnvironment       = EnvProduction
 	DefaultStackTraceContext = 5
 	DefaultWaitEnabler       = zapcore.PanicLevel
 )
