@@ -9,6 +9,7 @@ import (
 
 	"github.com/getsentry/raven-go"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -45,6 +46,13 @@ const (
 )
 
 const ErrorStackTraceKey = "error_stack_trace"
+
+const SkipKey = "_zapsentry_skip"
+
+// Skip returns a field that tells zapsentry to skip the log entry.
+func Skip() zapcore.Field {
+	return zap.Bool(SkipKey, true)
+}
 
 //
 // Core options
@@ -152,7 +160,9 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		req *http.Request
 	)
 
-	processField := func(field zapcore.Field) {
+	// processField processes the given field.
+	// When false is returned, the whole entry is to be skipped.
+	processField := func(field zapcore.Field) bool {
 		// Check for significant keys.
 		switch field.Key {
 		case EventIDKey:
@@ -189,21 +199,30 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 				field.AddTo(encoder)
 			}
 
+		case SkipKey:
+			return false
+
 		default:
 			// Add to the encoder in case this is not a significant key.
 			field.AddTo(encoder)
 		}
+
+		return true
 	}
 
 	// Process core fields first.
 	for _, field := range core.fields {
-		processField(field)
+		if !processField(field) {
+			return nil
+		}
 	}
 
 	// Then process the fields passed directly.
 	// These can be then used to overwrite the core fields.
 	for _, field := range fields {
-		processField(field)
+		if !processField(field) {
+			return nil
+		}
 	}
 
 	// Split fields into tags and extra.
