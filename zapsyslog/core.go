@@ -53,7 +53,7 @@ func (core *Core) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *zap
 
 func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// Generate the message.
-	buffer, err := core.encoder.EncodeEntry(entry, fields)
+	buffer, err := core.encoder.EncodeEntry(entry, append(core.fields, fields...))
 	if err != nil {
 		return errors.Wrap(err, "failed to encode log entry")
 	}
