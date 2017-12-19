@@ -13,11 +13,8 @@ import (
 
 type Core struct {
 	zapcore.LevelEnabler
-
 	encoder zapcore.Encoder
 	writer  *syslog.Writer
-
-	fields []zapcore.Field
 }
 
 func NewCore(enab zapcore.LevelEnabler, encoder zapcore.Encoder, writer *syslog.Writer) *Core {
@@ -29,19 +26,11 @@ func NewCore(enab zapcore.LevelEnabler, encoder zapcore.Encoder, writer *syslog.
 }
 
 func (core *Core) With(fields []zapcore.Field) zapcore.Core {
-	// Clone core.
-	clone := *core
-
-	// Clone encoder.
-	clone.encoder = core.encoder.Clone()
-
-	// Clone and append fields.
-	clone.fields = make([]zapcore.Field, len(core.fields)+len(fields))
-	copy(clone.fields, core.fields)
-	copy(clone.fields[len(core.fields):], fields)
-
-	// Done.
-	return &clone
+	clone := core.clone()
+	for _, field := range fields {
+		field.AddTo(clone.encoder)
+	}
+	return clone
 }
 
 func (core *Core) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *zapcore.CheckedEntry {
@@ -53,7 +42,7 @@ func (core *Core) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *zap
 
 func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	// Generate the message.
-	buffer, err := core.encoder.EncodeEntry(entry, append(core.fields, fields...))
+	buffer, err := core.encoder.EncodeEntry(entry, fields)
 	if err != nil {
 		return errors.Wrap(err, "failed to encode log entry")
 	}
@@ -90,4 +79,12 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 func (core *Core) Sync() error {
 	return nil
+}
+
+func (core *Core) clone() *Core {
+	return &Core{
+		LevelEnabler: core.LevelEnabler,
+		encoder:      core.encoder.Clone(),
+		writer:       core.writer,
+	}
 }
