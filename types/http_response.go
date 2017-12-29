@@ -17,6 +17,10 @@ type HTTPResponse struct {
 
 // MarshalLogObject implements zapcore.ObjectMarshaller interface.
 func (res HTTPResponse) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if res.R == nil {
+		return nil
+	}
+
 	enc.AddString("status", res.R.Status)
 	enc.AddInt("status_code", res.R.StatusCode)
 	enc.AddString("proto", res.R.Proto)
