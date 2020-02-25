@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/tchap/zapext/zapsentry"
+	"github.com/tchap/zapext/v2/zapsentry"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
