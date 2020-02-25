@@ -3,11 +3,13 @@ package zapsentry
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/tchap/zapext/types"
 
-	"github.com/getsentry/raven-go"
+	"github.com/getsentry/sentry-go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -17,14 +19,14 @@ import (
 // Levels
 //
 
-var zapLevelToRavenSeverity = map[zapcore.Level]raven.Severity{
-	zapcore.DebugLevel:  raven.DEBUG,
-	zapcore.InfoLevel:   raven.INFO,
-	zapcore.WarnLevel:   raven.WARNING,
-	zapcore.ErrorLevel:  raven.ERROR,
-	zapcore.DPanicLevel: raven.FATAL,
-	zapcore.PanicLevel:  raven.FATAL,
-	zapcore.FatalLevel:  raven.FATAL,
+var zapLevelToSentrySeverity = map[zapcore.Level]sentry.Level{
+	zapcore.DebugLevel:  sentry.LevelDebug,
+	zapcore.InfoLevel:   sentry.LevelInfo,
+	zapcore.WarnLevel:   sentry.LevelWarning,
+	zapcore.ErrorLevel:  sentry.LevelError,
+	zapcore.DPanicLevel: sentry.LevelFatal,
+	zapcore.PanicLevel:  sentry.LevelFatal,
+	zapcore.FatalLevel:  sentry.LevelFatal,
 }
 
 //
@@ -66,21 +68,9 @@ func SetStackTraceSkip(skip int) Option {
 	}
 }
 
-func SetStackTraceContext(context int) Option {
+func SetFlushTimeout(timeout time.Duration) Option {
 	return func(core *Core) {
-		core.stContext = context
-	}
-}
-
-func SetStackTracePackagePrefixes(prefixes []string) Option {
-	return func(core *Core) {
-		core.stPackagePrefixes = prefixes
-	}
-}
-
-func SetWaitEnabler(enab zapcore.LevelEnabler) Option {
-	return func(core *Core) {
-		core.wait = enab
+		core.stFlushTimeout = timeout
 	}
 }
 
@@ -89,30 +79,25 @@ func SetWaitEnabler(enab zapcore.LevelEnabler) Option {
 //
 
 const (
-	DefaultStackTraceContext = 5
-	DefaultWaitEnabler       = zapcore.PanicLevel
+	DefaultFlushTimeout = 5 * time.Second
 )
 
 type Core struct {
 	zapcore.LevelEnabler
 
-	client *raven.Client
+	client *sentry.Client
 
-	stSkip            int
-	stContext         int
-	stPackagePrefixes []string
-
-	wait zapcore.LevelEnabler
+	stSkip         int
+	stFlushTimeout time.Duration
 
 	fields []zapcore.Field
 }
 
-func NewCore(enab zapcore.LevelEnabler, client *raven.Client, options ...Option) *Core {
+func NewCore(enab zapcore.LevelEnabler, client *sentry.Client, options ...Option) *Core {
 	core := &Core{
-		LevelEnabler: enab,
-		client:       client,
-		stContext:    DefaultStackTraceContext,
-		wait:         DefaultWaitEnabler,
+		LevelEnabler:   enab,
+		client:         client,
+		stFlushTimeout: DefaultFlushTimeout,
 	}
 
 	for _, opt := range options {
@@ -143,13 +128,15 @@ func (core *Core) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *zap
 }
 
 func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	// Create a Raven packet.
-	packet := raven.NewPacket(entry.Message)
+	// Create a Sentry Event.
+	event := sentry.NewEvent()
+	event.Message = entry.Message
+	event.Platform = "go"
 
 	// Process entry.
-	packet.Level = zapLevelToRavenSeverity[entry.Level]
-	packet.Timestamp = raven.Timestamp(entry.Time)
-	packet.Logger = entry.LoggerName
+	event.Level = zapLevelToSentrySeverity[entry.Level]
+	event.Timestamp = entry.Time.Unix()
+	event.Logger = entry.LoggerName
 
 	// Process fields.
 	encoder := zapcore.NewMapObjectEncoder()
@@ -166,19 +153,13 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		// Check for significant keys.
 		switch field.Key {
 		case EventIDKey:
-			packet.EventID = field.String
-
-		case ProjectKey:
-			packet.Project = field.String
+			event.EventID = sentry.EventID(field.String)
 
 		case PlatformKey:
-			packet.Platform = field.String
-
-		case CulpritKey:
-			packet.Culprit = field.String
+			event.Platform = field.String
 
 		case ServerNameKey:
-			packet.ServerName = field.String
+			event.ServerName = field.String
 
 		case ErrorKey:
 			if ex, ok := field.Interface.(error); ok {
@@ -242,49 +223,75 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		}
 	}
 
-	// In case an error object is present, create an exception.
-	// Capture the stack trace in any case.
-	stackTrace := raven.NewStacktrace(core.stSkip, core.stContext, core.stPackagePrefixes)
 	if err != nil {
-		packet.Interfaces = append(packet.Interfaces, raven.NewException(err, stackTrace))
-
-		// In case this is a stack tracer, record the actual error stack trace.
-		if stackTracer, ok := err.(StackTracer); ok {
-			frames := stackTracer.StackTrace()
-			record := make([][]string, 0, len(frames))
-			for _, frame := range frames {
-				record = append(record, strings.Split(fmt.Sprintf("%+v", frame), "\n"))
-			}
-			extra[ErrorStackTraceKey] = record
+		// In case an error object is present, create an exception.
+		// Capture the stack trace in any case.
+		stacktrace := sentry.ExtractStacktrace(err)
+		if stacktrace == nil {
+			stacktrace = sentry.NewStacktrace()
 		}
+		// Handle wrapped errors for github.com/pingcap/errors and github.com/pkg/errors
+		cause := errors.Cause(err)
+		event.Exception = []sentry.Exception{{
+			Value:      cause.Error(),
+			Type:       reflect.TypeOf(cause).String(),
+			Stacktrace: stacktrace,
+		}}
 	} else {
-		packet.Interfaces = append(packet.Interfaces, stackTrace)
+		stacktrace := sentry.NewStacktrace()
+		stacktrace.Frames = filterFrames(stacktrace.Frames)
+		event.Exception = []sentry.Exception{{
+			Value:      entry.Message,
+			Stacktrace: stacktrace,
+		}}
 	}
 
 	// In case an HTTP request is present, add the HTTP interface.
 	if req != nil {
-		packet.Interfaces = append(packet.Interfaces, raven.NewHttp(req))
+		var request sentry.Request
+		request.FromHTTPRequest(req)
+		event.Request = request
 	}
 
 	// Add tags and extra into the packet.
 	if len(tags) != 0 {
-		packet.AddTags(tags)
+		event.Tags = tags
 	}
 	if len(extra) != 0 {
-		packet.Extra = extra
+		event.Extra = extra
 	}
 
+	hub := sentry.CurrentHub()
 	// Capture the packet.
-	_, errCh := core.client.Capture(packet, nil)
-
-	if core.wait.Enabled(entry.Level) {
-		return <-errCh
-	}
+	_ = core.client.CaptureEvent(event, nil, hub.Scope())
 	return nil
 }
 
+func filterFrames(frames []sentry.Frame) []sentry.Frame {
+	if len(frames) == 0 {
+		return nil
+	}
+
+	filteredFrames := make([]sentry.Frame, 0, len(frames))
+
+	for _, frame := range frames {
+		// Skip Zap internal code in the frames.
+		if strings.HasPrefix(frame.Function, "go.uber.org/zap") {
+			continue
+		}
+		// Skip zapsentry code in the frames.
+		if strings.HasPrefix(frame.Module, "github.com/tchap/zapext/zapsentry") &&
+			!strings.HasSuffix(frame.Module, "_test") {
+			continue
+		}
+		filteredFrames = append(filteredFrames, frame)
+	}
+
+	return filteredFrames
+}
+
 func (core *Core) Sync() error {
-	core.client.Wait()
+	core.client.Flush(core.stFlushTimeout)
 	return nil
 }
 

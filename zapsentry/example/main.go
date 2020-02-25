@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/tchap/zapext/zapsentry"
 
-	"github.com/getsentry/raven-go"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -29,7 +29,7 @@ func run() error {
 	}
 
 	// Instantiate a client.
-	client, err := raven.New(dsn)
+	client, err := sentry.NewClient(sentry.ClientOptions{Dsn: dsn})
 	if err != nil {
 		return errors.Wrap(err, "failed to get a Sentry client")
 	}
