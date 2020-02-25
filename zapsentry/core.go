@@ -280,7 +280,7 @@ func filterFrames(frames []sentry.Frame) []sentry.Frame {
 			continue
 		}
 		// Skip zapsentry code in the frames.
-		if strings.HasPrefix(frame.Module, "github.com/tchap/zapext/zapsentry") &&
+		if strings.HasPrefix(frame.Module, "github.com/tchap/zapext") &&
 			!strings.HasSuffix(frame.Module, "_test") {
 			continue
 		}
