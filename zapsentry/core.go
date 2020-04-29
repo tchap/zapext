@@ -135,7 +135,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 	// Process entry.
 	event.Level = zapLevelToSentrySeverity[entry.Level]
-	event.Timestamp = entry.Time.Unix()
+	event.Timestamp = entry.Time
 	event.Logger = entry.LoggerName
 
 	// Process fields.
@@ -248,9 +248,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 	// In case an HTTP request is present, add the HTTP interface.
 	if req != nil {
-		var request sentry.Request
-		request.FromHTTPRequest(req)
-		event.Request = request
+		event.Request = sentry.NewRequest(req)
 	}
 
 	// Add tags and extra into the packet.
