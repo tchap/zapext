@@ -46,6 +46,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to encode log entry")
 	}
+	defer buffer.Free()
 
 	message := buffer.String()
 
