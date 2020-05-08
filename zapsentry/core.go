@@ -45,6 +45,7 @@ const (
 	ServerNameKey  = "server_name"
 	ErrorKey       = "error"
 	HTTPRequestKey = "http_request"
+	UserKey        = "user"
 )
 
 const ErrorStackTraceKey = "error_stack_trace"
@@ -182,6 +183,16 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 
 		case SkipKey:
 			return false
+
+		case UserKey:
+			switch user := field.Interface.(type) {
+			case User:
+				event.User = sentry.User(user)
+			case *User:
+				event.User = sentry.User(*user)
+			default:
+				field.AddTo(encoder)
+			}
 
 		default:
 			// Add to the encoder in case this is not a significant key.
