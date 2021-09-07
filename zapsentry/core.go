@@ -230,7 +230,7 @@ func (core *Core) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 				tags[key] = fmt.Sprintf("%v", value)
 			}
 		} else {
-			extra[key] = value
+			extra[key] = fmt.Sprintf("%v", value)
 		}
 	}
 
